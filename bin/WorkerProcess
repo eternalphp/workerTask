@@ -1,0 +1,31 @@
+#!/usr/bin/env php
+<?php
+//服务进程
+date_default_timezone_set('Asia/Shanghai'); //默认时区
+
+require(__DIR__ . "/Worker.php");
+
+$config = json_decode(fread(STDIN,1024),true);
+$rules = Worker::parseCommand($config);
+$sleep = 1;
+
+file_put_contents("2.txt",json_encode($rules));
+
+while(true){
+	
+	if($rules["sleep"] > 0){
+		$sleep = $rules["sleep"];
+		Worker::cmdCommand($rules);
+	}else{
+		$sleep = 60;
+		if(Worker::checkRule($rules)){
+			Worker::cmdCommand($rules);
+		}
+	}
+		
+	sleep($sleep);
+}
+
+
+
+?>

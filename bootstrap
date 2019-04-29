@@ -1,0 +1,138 @@
+#!/usr/bin/env php
+<?php 
+
+require(__DIR__ ."/bin/Worker.php");
+
+switch($argv[1]){
+	case 'run':
+		Worker::onMessage(function($res){
+			echo "$res[title] was start! \n";
+		});
+		Worker::onError(function($res){
+			echo "$res[title] was error! \n";
+		});
+		Worker::onClose(function($res){
+			echo "$res[title] was close! \n";
+		});
+		Worker::runAll();
+	break;
+	case 'status':
+		Worker::getTaskList();
+	break;
+	case 'start':
+		if(isset($argv[2]) && intval($argv[2]) > 0){
+			Worker::startProcess($argv[2]);
+		}else{
+			Worker::startProcessAll();
+		}
+	break;
+	case 'stop':
+		if(isset($argv[2]) && intval($argv[2]) > 0){
+			Worker::stopProcess($argv[2]);
+		}else{
+			Worker::stopProcessAll();
+		}
+	break;
+	case 'restart':
+		
+		if(isset($argv[2]) && intval($argv[2]) > 0){
+			Worker::stopProcess($argv[2]);
+			Worker::startProcess($argv[2]);
+		}else{
+			Worker::restartProcessAll();
+		}
+		
+	break;
+	case 'reload':
+		Worker::reload();
+	break;
+	case 'config':
+		$argv[2] = isset($argv[2])?$argv[2]:"";
+		if($argv[2] == '--add'){
+		
+			$data = array();
+			$data["taskid"] = 0;
+			
+			echo "\n";
+			echo "Please enter your title: ";
+			$data["title"] = trim(fgets(STDIN));
+			if($data["title"] == ''){
+				$data["title"] = "new task";
+			}
+			fwrite(STDOUT,"The title is : ".$data["title"]."\n\n");
+			
+			echo "Please enter your rule: ";
+			$rule = trim(fgets(STDIN));
+			if($rule == '') $rule = '*/3 * * * *';
+			$rules = explode(" ",$rule);
+			$data["minute"] = isset($rules[0])?$rules[0]:"*/3";
+			$data["hour"] = isset($rules[1])?$rules[1]:"*";
+			$data["day"] = isset($rules[2])?$rules[2]:"*";
+			$data["month"] = isset($rules[3])?$rules[3]:"*";
+			$data["dayofweek"] = isset($rules[4])?$rules[4]:"*";
+			
+			fwrite(STDOUT,"The rule is : ".$rule."\n\n");
+			
+			echo "Please enter your taskUrl: ";
+			$data["taskUrl"] = trim(fgets(STDIN));
+			fwrite(STDOUT,"The taskUrl is : ".$data["taskUrl"]."\n\n");
+			
+			echo "Please enter your cmdFile: ";
+			$data["cmdFile"] = trim(fgets(STDIN));
+			if($data["cmdFile"] == '') $data["cmdFile"] = 'task.php';
+			fwrite(STDOUT,"The cmdFile is : ".$data["cmdFile"]."\n\n");
+			
+			echo "Please enter your worker processes: ";
+			$worker_processes = intval(trim(fgets(STDIN)));
+			$data["worker_processes"] = ($worker_processes > 0)?$worker_processes:1;
+			fwrite(STDOUT,"The worker processes is : ".$data["worker_processes"]."\n\n");
+			
+			echo "Please enter your options: ";
+			$data["worker_options"] = trim(fgets(STDIN));
+			fwrite(STDOUT,"The options is : ".$data["worker_options"]."\n\n");
+			
+			if($data) Worker::addConfig($data);
+			
+			fwrite(STDOUT,"Worker: worker config save success !");
+			
+		}elseif($argv[2] == '--remove'){
+			if(isset($argv[3])){
+				Worker::removeConfig($argv[3]);
+			}else{
+				fwrite(STDOUT,"Worker: worker config --remove missing parameter. See 'worker --help'.");	
+			}
+		}else{
+			fwrite(STDOUT,"Worker: worker config missing parameter. See 'worker --help'.");	
+		}
+	break;
+	case '--help':
+		$lines = array();
+		$lines[] = "Worker command list: \n";
+		$lines[] = "\n";
+		$lines[] = "worker run \n";
+		$lines[] = "worker start \n";
+		$lines[] = "worker start [taskid] \n";
+		$lines[] = "worker stop \n";
+		$lines[] = "worker stop [taskid] \n";
+		$lines[] = "worker restart \n";
+		$lines[] = "worker config --add \n";
+		$lines[] = "worker config --remove [taskid] \n";
+		$lines[] = "worker reload \n";
+		$lines[] = "worker status \n";
+		$lines[] = "worker --help \n";
+		fwrite(STDOUT,implode("",$lines));
+	break;
+	
+	case '--version':
+	case '-v':
+	case '-V':
+		fwrite(STDOUT,sprintf("worker version %s \n",Worker::getVersion()));
+	break;
+	
+	default:
+		fwrite(STDOUT,sprintf("Worker: [%s] is not a Worker command. See 'worker --help'.",$argv[1]));	
+		
+}
+
+
+?>
