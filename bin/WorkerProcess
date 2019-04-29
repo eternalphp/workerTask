@@ -8,16 +8,20 @@ require(__DIR__ . "/Worker.php");
 $config = json_decode(fread(STDIN,1024),true);
 $rules = Worker::parseCommand($config);
 $sleep = 1;
+$start = false;
 
 while(true){
 	
-	if($rules["sleep"] > 0){
-		$sleep = $rules["sleep"];
-		Worker::cmdCommand($rules);
-	}else{
-		$sleep = 60;
-		if(Worker::checkRule($rules)){
+	if(date("s") == '00' || $start == true){
+		$start = true;
+		if($rules["sleep"] > 0){
+			$sleep = $rules["sleep"];
 			Worker::cmdCommand($rules);
+		}else{
+			$sleep = 60;
+			if(Worker::checkRule($rules)){
+				Worker::cmdCommand($rules);
+			}
 		}
 	}
 		
