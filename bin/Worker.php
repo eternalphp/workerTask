@@ -581,11 +581,13 @@ class Worker{
 						$minutes = explode(",",$config["minute"]);
 					}elseif(strstr($config["minute"],"-")){
 						$minutes = explode("-",$config["minute"]);
-						$min = $minutes[0] + 1;
+						$min = $minutes[0];
 						$max = $minutes[1];
-						for($minute = $min;$minute < $max;$minute++){
+						for($minute = $min;$minute <= $max;$minute++){
 							$minutes[] = $minute;
 						}
+					}else{
+						$minutes[] = $config["minute"];
 					}
 					
 					$data['minutes'] = $minutes;
@@ -602,11 +604,13 @@ class Worker{
 						$hours = explode(",",$config["hour"]);
 					}elseif(strstr($config["hour"],"-")){
 						$hours = explode("-",$config["hour"]);
-						$min = $hours[0] + 1;
+						$min = $hours[0];
 						$max = $hours[1];
-						for($hour = $min;$hour < $max;$hour++){
+						for($hour = $min;$hour <= $max;$hour++){
 							$hours[] = $hour;
 						}
+					}else{
+						$hours[] = $config["hour"];
 					}
 					
 					$data['hours'] = $hours;
@@ -623,11 +627,13 @@ class Worker{
 						$days = explode(",",$config["day"]);
 					}elseif(strstr($config["day"],"-")){
 						$days = explode("-",$config["day"]);
-						$min = $days[0] + 1;
+						$min = $days[0];
 						$max = $days[1];
-						for($day = $min;$day < $max;$day++){
+						for($day = $min;$day <= $max;$day++){
 							$days[] = $day;
 						}
+					}else{
+						$days[] = $config["day"];
 					}
 					
 					$data['days'] = $days;
@@ -639,13 +645,15 @@ class Worker{
 					$months = explode(",",$config["month"]);
 				}elseif(strstr($config["month"],"-")){
 					$months = explode("-",$config["month"]);
+					$min = $months[0];
 					$max = $months[1];
-					$min = $months[0]+1;
 					if($months){
-						for($month = $min;$month < $maxMonth;$month++){
+						for($month = $min;$month <= $maxMonth;$month++){
 							$months[] = $month;
 						}
 					}
+				}else{
+					$months[] = $config["month"];
 				}
 				
 				$data['months'] = $months;

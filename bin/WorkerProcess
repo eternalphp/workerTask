@@ -9,8 +9,6 @@ $config = json_decode(fread(STDIN,1024),true);
 $rules = Worker::parseCommand($config);
 $sleep = 1;
 
-file_put_contents("2.txt",json_encode($rules));
-
 while(true){
 	
 	if($rules["sleep"] > 0){
