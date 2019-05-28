@@ -1,0 +1,39 @@
+#!/usr/bin/env php
+<?php
+//服务进程
+require(__DIR__ . "/Worker.php");
+
+$taskList = array();
+
+while(true){
+	
+	$list = Config::getConfigList();
+	if($list){
+		foreach($list as $config){
+			$rules = Job::parseCommand($config);
+			if($rules["sleep"] > 0){
+				$taskid = $config['taskid'];
+				if(isset($taskList[$taskid])){
+					$lasttime = $taskList[$taskid]["lasttime"];
+					if(time() - $lasttime == $rules["sleep"]){
+						$taskList[$taskid]["lasttime"] = time();
+						Job::cmdCommand($rules);
+					}
+				}else{
+					$taskList[$taskid]["lasttime"] = time();
+					Job::cmdCommand($rules);
+				}
+				
+			}else{
+				if(Job::checkRule($rules)){
+					Job::cmdCommand($rules);
+				}
+			}
+
+		}
+	}
+	
+		
+	sleep(1);
+}
+?>

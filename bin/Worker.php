@@ -70,6 +70,8 @@ class Worker{
 	static $workerProcessPid = ROOT . '/conf/worker.pid'; //主进程pid
 	static $workerProcessDirectory = ROOT;
 	
+	const MAX_LOG_SIZE = 10*2014*1024; //字节
+	
 	static $taskProcessList = array();
 	static $taskList = array();
 	
@@ -346,7 +348,17 @@ class Worker{
      */
 	public static function addLogData($data = array()){
 		if($data){
-			file_put_contents(self::$workerRuntimeLog,implode(" | ",$data)."\n",FILE_APPEND);
+			if(filesize(self::$workerRuntimeLog) >= self::MAX_LOG_SIZE){
+				$zip = new ZipArchive();
+				$zipFile = LOGPATH .'runtime_'. date("YmdHis") . '.zip';
+				if($zip->open($tempFileName,ZipArchive::CREATE) == true){
+					$zip->addFile(self::$workerRuntimeLog);
+					$zip->close();
+					unlink(self::$workerRuntimeLog);
+				}
+			}else{
+				file_put_contents(self::$workerRuntimeLog,implode(" | ",$data)."\n",FILE_APPEND);
+			}
 		}
 	}
 	
