@@ -351,7 +351,7 @@ class Worker{
 			if(filesize(self::$workerRuntimeLog) >= self::MAX_LOG_SIZE){
 				$zip = new ZipArchive();
 				$zipFile = LOGPATH .'runtime_'. date("YmdHis") . '.zip';
-				if($zip->open($tempFileName,ZipArchive::CREATE) == true){
+				if($zip->open($zipFile,ZipArchive::CREATE) == true){
 					$zip->addFile(self::$workerRuntimeLog);
 					$zip->close();
 					unlink(self::$workerRuntimeLog);
