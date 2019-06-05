@@ -1,10 +1,12 @@
 #!/usr/bin/env php
 <?php
 //服务进程
+date_default_timezone_set('Asia/Shanghai'); //默认时区
+
 require(__DIR__ . "/Worker.php");
 
 $config = json_decode(fread(STDIN,1024),true);
-$rules = Job::parseCommand($config);
+$rules = Worker::parseCommand($config);
 $sleep = 1;
 $start = false;
 
@@ -14,11 +16,11 @@ while(true){
 		$start = true;
 		if($rules["sleep"] > 0){
 			$sleep = $rules["sleep"];
-			Job::cmdCommand($rules);
+			Worker::cmdCommand($rules);
 		}else{
 			$sleep = 60;
-			if(Job::checkRule($rules)){
-				Job::cmdCommand($rules);
+			if(Worker::checkRule($rules)){
+				Worker::cmdCommand($rules);
 			}
 		}
 	}

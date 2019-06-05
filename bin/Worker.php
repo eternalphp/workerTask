@@ -52,6 +52,9 @@ class Worker{
      */
     const STATUS_SHUTDOWN = 4;
 	
+	const ONLOG = false; //是否启动日志
+	const ONDEBUG = false; //是否启动调试
+	
 	const MASTER_HANDLE = 0x4337b700; //主进程状态
 	const STATUS_HANDLE = 0x4337b800; //监听状态
 	
@@ -62,6 +65,7 @@ class Worker{
 	const Worker_CONFIG_TYPE = 'conf';
 	const Worker_CONFIG_FILE = ROOT .'/conf/worker.conf'; //配置文件
 	const ACTIVE_STATUS_FILE = ROOT .'/conf/worker.status'; //运行状态配置文件
+	const Worker_CONFIG_UPDATE = ROOT . '/conf/worker.update'; //监听配置文件是否更新
 	const Worker_VERSION_FILE = ROOT .'/conf/worker.version'; //版本配置文件
 	const Worker_PROCESS_FILE = __DIR__ . '/WorkerProcess'; //主进程文件
 	
@@ -70,7 +74,7 @@ class Worker{
 	static $workerProcessPid = ROOT . '/conf/worker.pid'; //主进程pid
 	static $workerProcessDirectory = ROOT;
 	
-	const MAX_LOG_SIZE = 10*2014*1024; //字节
+	const MAX_LOG_SIZE = 10*1024*1024; //字节
 	
 	static $taskProcessList = array();
 	static $taskList = array();
@@ -125,8 +129,9 @@ class Worker{
 		Worker::write(self::MASTER_HANDLE,self::STATUS_RUNNING);
 		
 		//标识配置文件是否更新状态
-		Worker::write(self::STATUS_HANDLE,0);
-		
+		//Worker::write(self::STATUS_HANDLE,0);
+		file_put_contents(Worker::Worker_CONFIG_UPDATE,0);
+
 		//保存主进程pid
 		file_put_contents(self::$workerProcessPid,getmypid());
 	}
@@ -229,8 +234,18 @@ class Worker{
 			if(!$status['running']){
 				$row = Worker::getWorkerDetail($taskid);
 				if($row){
+					
+					if($row["status"] == self::STATUS_RUNNING){
+						@proc_close($process);
+						$row["status"] = self::STATUS_STARTING; //非正常关闭进程服务，将状态改为启动中
+						//Worker::write(Worker::STATUS_HANDLE,1);
+						file_put_contents(Worker::Worker_CONFIG_UPDATE,1);
+					}else{
+						@proc_close($process);
+						$row["status"] = self::STATUS_SHUTDOWN; //否则状态改为停止
+					}
+					
 					$row["running"] = 0;
-					$row["status"] = self::STATUS_SHUTDOWN;
 					$row["stoptime"] = date("Y-m-d H:i:s");
 					$data = Worker::getWorkerStatus();
 					$data[$taskid] = $row;
@@ -333,6 +348,282 @@ class Worker{
 		return false;
 	}
 	
+	
+    /**
+     * 解析任务规则
+	 * @param array $config
+     * @return array
+     */
+	public static function parseCommand($config = array()){
+		if($config){
+			
+			$data = array();
+			$data["sleep"] = 0;
+			$data["taskUrl"] = $config["taskUrl"];
+			$data["cmdFile"] = $config["cmdFile"];
+			$data["worker_processes"] = $config["worker_processes"];
+			$data["worker_options"] = $config["worker_options"];
+			
+			if($config["minute"] != '' && $config["minute"] != '*'){
+				if(strstr($config["minute"],"/")){
+					$minutes = explode("/",$config["minute"]);
+					$data['sleep'] = $minutes[1]*60;
+					return $data;
+				}else{
+					if(strstr($config["minute"],",")){
+						$minutes = explode(",",$config["minute"]);
+					}elseif(strstr($config["minute"],"-")){
+						$minutes = explode("-",$config["minute"]);
+						$min = $minutes[0];
+						$max = $minutes[1];
+						for($minute = $min;$minute <= $max;$minute++){
+							$minutes[] = $minute;
+						}
+					}else{
+						$minutes[] = $config["minute"];
+					}
+					
+					$data['minutes'] = $minutes;
+				}
+			}
+			
+			if($config["hour"] != '' && $config["hour"] != '*'){
+				if(strstr($config["hour"],"/")){
+					$hours = explode("/",$config["hour"]);
+					$data['sleep'] = $hours[1]*60*60;
+					return $data;
+				}else{
+					if(strstr($config["hour"],",")){
+						$hours = explode(",",$config["hour"]);
+					}elseif(strstr($config["hour"],"-")){
+						$hours = explode("-",$config["hour"]);
+						$min = $hours[0];
+						$max = $hours[1];
+						for($hour = $min;$hour <= $max;$hour++){
+							$hours[] = $hour;
+						}
+					}else{
+						$hours[] = $config["hour"];
+					}
+					
+					$data['hours'] = $hours;
+				}
+			}
+			
+			if($config["day"] != '' && $config["day"] != '*'){
+				if(strstr($config["day"],"/")){
+					$days = explode("/",$config["day"]);
+					$data['sleep'] = $days[1]*60*60*24;
+					return $data;
+				}else{
+					if(strstr($config["day"],",")){
+						$days = explode(",",$config["day"]);
+					}elseif(strstr($config["day"],"-")){
+						$days = explode("-",$config["day"]);
+						$min = $days[0];
+						$max = $days[1];
+						for($day = $min;$day <= $max;$day++){
+							$days[] = $day;
+						}
+					}else{
+						$days[] = $config["day"];
+					}
+					
+					$data['days'] = $days;
+				}
+			}
+			
+			if($config["month"] != '' && $config["month"] != '*'){
+				if(strstr($config["month"],",")){
+					$months = explode(",",$config["month"]);
+				}elseif(strstr($config["month"],"-")){
+					$months = explode("-",$config["month"]);
+					$min = $months[0];
+					$max = $months[1];
+					if($months){
+						for($month = $min;$month <= $maxMonth;$month++){
+							$months[] = $month;
+						}
+					}
+				}else{
+					$months[] = $config["month"];
+				}
+				
+				$data['months'] = $months;
+				
+			}
+			
+			if($config["dayofweek"] != '' && $config["dayofweek"] != '*'){
+				$data['weeks'] = explode(",",$config["dayofweek"]);
+			}
+			
+			return $data;
+		}
+	}
+	
+    /**
+     * 启动任务
+	 * @param array $data
+     * @return void
+     */
+	public static function cmdCommand($data = array()){
+		if($data){
+			
+			//读取子进程程序配置目录
+			$global = Config::getConfigList('global');
+			if(isset($global['worker_processes_directory'])){
+				Worker::$workerProcessDirectory = ROOT .'/'. $global['worker_processes_directory'];
+				if(!file_exists(Worker::$workerProcessDirectory)){
+					mkdir(Worker::$workerProcessDirectory,0777,true);
+				}
+			}
+			unset($global);
+			
+			$config = array();
+			$config['worker_options'] = $data["worker_options"];
+			
+			if($data["taskUrl"] != ''){
+				Worker::httpsRequest($data["taskUrl"]);
+			}else{
+				
+				$pid = 1;
+				while($pid <= $data["worker_processes"]){
+					
+					$config['pid'] = $pid; //虚拟进程pid
+					self::createTaskProcess($data["cmdFile"],$config); //创建任务进程
+					
+					$pid++;
+				}
+			}
+
+			unset($data,$config);
+		}
+	}
+	
+    /**
+     * 创建任务进程
+	 * @param string $cmdFile
+	 * @param array $data 传递参数
+     * @return void
+     */
+	public static function createTaskProcess($cmdFile,$data = array()){
+		if($data){
+			$start_file = Worker::$workerProcessDirectory ."/". $cmdFile;
+			$start_file = str_replace('/',DIRECTORY_SEPARATOR,$start_file);
+			
+			if(file_exists($start_file)){
+				$std_file = LOGPATH . $cmdFile . ".out.txt";
+				if(!file_exists(dirname($std_file))){
+					mkdir(dirname($std_file),0777,true);
+				}
+
+				$descriptorspec = array(
+					0 => array('pipe', 'a'), // stdin
+					1 => array('file', $std_file, 'w'), // stdout
+					2 => array('file', $std_file, 'w') // stderr
+				);
+
+				$pipes       = array();
+				$process     = proc_open("php \"$start_file\" -q", $descriptorspec, $pipes); //创建任务进程
+				$std_handler = fopen($std_file, 'a+');
+				stream_set_blocking($std_handler, 0);
+				fwrite($pipes[0],json_encode($data)); //给子进程传递参数
+			}else{
+				Worker::debugLog("file : $start_file is not exists ");
+			}
+		}
+	}
+	
+    /**
+     * 检查规则
+	 * @param array $data
+     * @return bool
+     */
+	public static function checkRule($data = array()){
+		if($data){
+			if(isset($data["minutes"])){
+				if(!in_array(intval(date("i")),$data["minutes"])){
+					return false;
+				}
+			}
+			
+			if(isset($data["hours"])){
+				if(!in_array(date("G"),$data["hours"])){
+					return false;
+				}
+			}
+			
+			if(isset($data["days"])){
+				if(!in_array(date("j"),$data["days"])){
+					return false;
+				}
+			}
+			
+			if(isset($data["months"])){
+				if(!in_array(date("n"),$data["months"])){
+					return false;
+				}
+			}
+			
+			if(isset($data["weeks"])){
+				if(!in_array(date("w"),$data["weeks"])){
+					return false;
+				}
+			}
+			
+			return true;
+		}
+	}
+	
+	
+    /**
+     * 发起http请求
+	 * @param string $url
+	 * @param array $data
+	 * @param array $option
+     * @return string
+     */
+	public static function httpsRequest($url,$data = null,$options = array()){
+		$curl = curl_init();
+		curl_setopt($curl, CURLOPT_URL, $url);
+		
+		curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, FALSE);
+		curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, FALSE);
+
+		
+		if (!empty($data)){
+			curl_setopt($curl, CURLOPT_POST, 1);
+			curl_setopt($curl, CURLOPT_POSTFIELDS, $data);
+		}
+		curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1);
+		if(isset($options['timeout']) && $options['timeout']>0) curl_setopt($curl, CURLOPT_TIMEOUT,$options['timeout']);
+		
+		if(isset($options["return_header"])){
+			curl_setopt($curl, CURLOPT_HEADER, $options["return_header"]);
+		}
+		
+		if(isset($options['header']) && is_array($options['header']) && $options['header']){
+			curl_setopt($curl, CURLOPT_HTTPHEADER,$options['header']);
+		}elseif(isset($options['cookie']) && !empty($options['cookie'])){
+			curl_setopt($curl, CURLOPT_COOKIE, $options['cookie']);
+		}
+		
+		//保存cookie文件路径
+		if(isset($options['saveCookieFile']) && $options['saveCookieFile']!=''){
+			curl_setopt($curl, CURLOPT_COOKIEJAR, $options['saveCookieFile']); 
+		}
+		
+		//读取cookie文件路径
+		if(isset($options['readCookieFile']) && $options['readCookieFile']!=''){
+			curl_setopt($curl, CURLOPT_COOKIEFILE, $options['readCookieFile']); 
+		}
+
+		curl_setopt ( $curl, CURLOPT_FOLLOWLOCATION, 1); 
+		$output = curl_exec($curl);
+		curl_close($curl);
+		return $output;
+	}
+	
     /**
      * 获取版本号
      * @return string
@@ -347,17 +638,25 @@ class Worker{
      * @return void
      */
 	public static function addLogData($data = array()){
-		if($data){
-			if(filesize(self::$workerRuntimeLog) >= self::MAX_LOG_SIZE){
-				$zip = new ZipArchive();
-				$zipFile = LOGPATH .'runtime_'. date("YmdHis") . '.zip';
-				if($zip->open($zipFile,ZipArchive::CREATE) == true){
-					$zip->addFile(self::$workerRuntimeLog);
-					$zip->close();
-					unlink(self::$workerRuntimeLog);
+		if(self::ONLOG == true){
+			if($data){
+				self::$workerRuntimeLog = realpath(self::$workerRuntimeLog);
+				$file = fopen(ROOT . '/lock.txt','w+'); //文件锁
+				if(flock($file,LOCK_EX)){  //加锁
+					if(filesize(self::$workerRuntimeLog) >= self::MAX_LOG_SIZE){
+						$zip = new ZipArchive();
+						$zipFile = LOGPATH .'runtime_'. date("YmdHis") . '.zip';
+						if($zip->open($zipFile,ZipArchive::CREATE) == true){
+							$zip->addFile(self::$workerRuntimeLog,basename(self::$workerRuntimeLog));
+							$zip->close();
+							file_put_contents(self::$workerRuntimeLog,'');
+						}
+					}
+					file_put_contents(self::$workerRuntimeLog,implode(" | ",$data)."\n",FILE_APPEND);
+					clearstatcache(); //清除文件缓存信息
+					flock($file,LOCK_UN); //解锁
 				}
-			}else{
-				file_put_contents(self::$workerRuntimeLog,implode(" | ",$data)."\n",FILE_APPEND);
+				fclose($file);
 			}
 		}
 	}
@@ -368,23 +667,26 @@ class Worker{
      * @return void
      */
 	public static function debugLog($message){
-		$path   = LOGPATH .'/'. date("Ymd").'/';
-		if(!file_exists($path)){
-			mkdir($path,0777,true);
+		if(self::ONDEBUG == true){
+			$path   = LOGPATH .'/'. date("Ym").'/';
+			if(!file_exists($path)){
+				mkdir($path,0777,true);
+			}
+			$filename = $path . date("Ymd").'_debug.log';
+			$e = new Exception();
+			$line = array();
+			$line[] = date("Y-m-d H:i:s");
+			$line[] = $e->getLine();
+			$line[] = $e->getFile();
+			if(is_array($message)){
+				$message = print_r($message,true);
+			}elseif(is_object($message)){
+				$message = var_export($message,true);
+			}
+			$line[] = $message;
+			file_put_contents($filename,implode(" | ",$line) ."\n",FILE_APPEND);
+			unset($line,$message);
 		}
-		$filename = $path . date("Ymd").'_debug.log';
-		$e = new Exception();
-		$line = array();
-		$line[] = date("Y-m-d H:i:s");
-		$line[] = $e->getLine();
-		$line[] = $e->getFile();
-		if(is_array($message)){
-			$message = print_r($message,true);
-		}elseif(is_object($message)){
-			$message = var_export($message,true);
-		}
-		$line[] = $message;
-		file_put_contents($filename,implode(" | ",$line) ."\n",FILE_APPEND);
 	}
 }
 
@@ -639,7 +941,8 @@ class Console{
 						}
 					}
 					Worker::updateWorkerStatus($list);
-					Worker::write(Worker::STATUS_HANDLE,1);
+					//Worker::write(Worker::STATUS_HANDLE,1);
+					file_put_contents(Worker::Worker_CONFIG_UPDATE,1);
 				}
 			}else{
 				$list = Worker::getWorkerStatus();
@@ -648,7 +951,8 @@ class Console{
 						$list[$taskid]["status"] = Worker::STATUS_STARTING;
 					}
 					Worker::updateWorkerStatus($list);
-					Worker::write(Worker::STATUS_HANDLE,1);
+					//Worker::write(Worker::STATUS_HANDLE,1);
+					file_put_contents(Worker::Worker_CONFIG_UPDATE,1);
 				}
 			}
 		}
@@ -663,11 +967,15 @@ class Console{
 		
 		$taskid = intval(self::getParams(2));
 		if($taskid > 0){
-			$row = Worker::getWorkerDetail($taskid);
+			$list = Worker::getWorkerStatus();
+			$row = $list[$taskid];
 			if($row){
 				if($row["running"] == 1){
-					//@exec(sprintf("kill -9 %d -f",$row["pid"]));
-					@exec(sprintf("kill -9 %d -f",$row["ppid"]));
+					@exec(sprintf("kill -9 %d -f",$row["pid"]));
+					$list[$taskid]["status"] = Worker::STATUS_STOPING;
+					Worker::updateWorkerStatus($list);
+					//Worker::write(Worker::STATUS_HANDLE,1);
+					file_put_contents(Worker::Worker_CONFIG_UPDATE,1);
 				}
 			}
 		}else{
@@ -695,7 +1003,6 @@ class Console{
      * @return void
      */
 	public static function status(){
-		
 		if(Worker::read(Worker::MASTER_HANDLE) != Worker::STATUS_RUNNING){
 			Console::write("Worker: Worker service was closed ! \n\n");
 		}
@@ -716,6 +1023,7 @@ class Console{
 			}
 			unset($list,$line);
 		}
+
 	}
 	
     /**
@@ -751,10 +1059,12 @@ class Console{
      * @return void
      */
 	public static function listion(){
-		$status = Worker::read(Worker::STATUS_HANDLE);
+		//$status = Worker::read(Worker::STATUS_HANDLE);
+		$status = file_get_contents(Worker::Worker_CONFIG_UPDATE);
 		if($status == 1){
 			Worker::$taskList = Worker::getWorkerStatus();
-		}	
+			file_put_contents(Worker::Worker_CONFIG_UPDATE,0);
+		}
 	}
 	
     /**
@@ -967,7 +1277,8 @@ class Console{
 					}
 
 					Worker::updateWorkerStatus($data);
-					Worker::write(Worker::STATUS_HANDLE,1);
+					//Worker::write(Worker::STATUS_HANDLE,1);
+					file_put_contents(Worker::Worker_CONFIG_UPDATE,1);
 			
 				}
 			break;
@@ -1020,265 +1331,6 @@ class Console{
      */
 	public static function column($str,$length){
 		return str_pad($str,$length," ");
-	}
-}
-
-class Job{
-	
-    /**
-     * 解析任务规则
-	 * @param array $config
-     * @return array
-     */
-	public static function parseCommand($config = array()){
-		if($config){
-			
-			$data = array();
-			$data["sleep"] = 0;
-			$data["taskUrl"] = $config["taskUrl"];
-			$data["cmdFile"] = $config["cmdFile"];
-			$data["worker_processes"] = $config["worker_processes"];
-			$data["worker_options"] = $config["worker_options"];
-			
-			if($config["minute"] != '' && $config["minute"] != '*'){
-				if(strstr($config["minute"],"/")){
-					$minutes = explode("/",$config["minute"]);
-					$data['sleep'] = $minutes[1]*60;
-					return $data;
-				}else{
-					if(strstr($config["minute"],",")){
-						$minutes = explode(",",$config["minute"]);
-					}elseif(strstr($config["minute"],"-")){
-						$minutes = explode("-",$config["minute"]);
-						$min = $minutes[0];
-						$max = $minutes[1];
-						for($minute = $min;$minute <= $max;$minute++){
-							$minutes[] = $minute;
-						}
-					}else{
-						$minutes[] = $config["minute"];
-					}
-					
-					$data['minutes'] = $minutes;
-				}
-			}
-			
-			if($config["hour"] != '' && $config["hour"] != '*'){
-				if(strstr($config["hour"],"/")){
-					$hours = explode("/",$config["hour"]);
-					$data['sleep'] = $hours[1]*60*60;
-					return $data;
-				}else{
-					if(strstr($config["hour"],",")){
-						$hours = explode(",",$config["hour"]);
-					}elseif(strstr($config["hour"],"-")){
-						$hours = explode("-",$config["hour"]);
-						$min = $hours[0];
-						$max = $hours[1];
-						for($hour = $min;$hour <= $max;$hour++){
-							$hours[] = $hour;
-						}
-					}else{
-						$hours[] = $config["hour"];
-					}
-					
-					$data['hours'] = $hours;
-				}
-			}
-			
-			if($config["day"] != '' && $config["day"] != '*'){
-				if(strstr($config["day"],"/")){
-					$days = explode("/",$config["day"]);
-					$data['sleep'] = $days[1]*60*60*24;
-					return $data;
-				}else{
-					if(strstr($config["day"],",")){
-						$days = explode(",",$config["day"]);
-					}elseif(strstr($config["day"],"-")){
-						$days = explode("-",$config["day"]);
-						$min = $days[0];
-						$max = $days[1];
-						for($day = $min;$day <= $max;$day++){
-							$days[] = $day;
-						}
-					}else{
-						$days[] = $config["day"];
-					}
-					
-					$data['days'] = $days;
-				}
-			}
-			
-			if($config["month"] != '' && $config["month"] != '*'){
-				if(strstr($config["month"],",")){
-					$months = explode(",",$config["month"]);
-				}elseif(strstr($config["month"],"-")){
-					$months = explode("-",$config["month"]);
-					$min = $months[0];
-					$max = $months[1];
-					if($months){
-						for($month = $min;$month <= $maxMonth;$month++){
-							$months[] = $month;
-						}
-					}
-				}else{
-					$months[] = $config["month"];
-				}
-				
-				$data['months'] = $months;
-				
-			}
-			
-			if($config["dayofweek"] != '' && $config["dayofweek"] != '*'){
-				$data['weeks'] = explode(",",$config["dayofweek"]);
-			}
-			
-			return $data;
-		}
-	}
-	
-    /**
-     * 启动任务
-	 * @param array $data
-     * @return void
-     */
-	public static function cmdCommand($data = array()){
-		if($data){
-			
-			//读取子进程程序配置目录
-			$global = Config::getConfigList('global');
-			if(isset($global['worker_processes_directory'])){
-				Worker::$workerProcessDirectory = $global['worker_processes_directory'];
-				if(!file_exists(Worker::$workerProcessDirectory)){
-					mkdir(Worker::$workerProcessDirectory,0777,true);
-				}
-			}
-			
-			if($data["taskUrl"] != ''){
-				Job::httpsRequest($data["taskUrl"]);
-			}else{
-				
-				$pid = 1;
-				while($pid <= $data["worker_processes"]){
-					
-					$start_file = realpath(Worker::$workerProcessDirectory ."/". $data["cmdFile"]);
-					$std_file = LOGPATH . $data["cmdFile"] . ".out.txt";
-					if(!file_exists(dirname($std_file))){
-						mkdir(dirname($std_file),0777,true);
-					}
-
-					$descriptorspec = array(
-						0 => array('pipe', 'a'), // stdin
-						1 => array('file', $std_file, 'w'), // stdout
-						2 => array('file', $std_file, 'w') // stderr
-					);
-
-
-					$pipes       = array();
-					$process     = proc_open("php \"$start_file\" -q", $descriptorspec, $pipes);
-					$std_handler = fopen($std_file, 'a+');
-					stream_set_blocking($std_handler, 0);
-					
-					$config = array();
-					$config['pid'] = $pid;
-					$config['worker_options'] = $data["worker_options"];
-					
-					fwrite($pipes[0],json_encode($config));
-					
-					$pid++;
-				}
-			}	
-		}
-	}
-	
-    /**
-     * 检查规则
-	 * @param array $data
-     * @return bool
-     */
-	public static function checkRule($data = array()){
-		if($data){
-			if(isset($data["minutes"])){
-				if(!in_array(intval(date("i")),$data["minutes"])){
-					return false;
-				}
-			}
-			
-			if(isset($data["hours"])){
-				if(!in_array(date("G"),$data["hours"])){
-					return false;
-				}
-			}
-			
-			if(isset($data["days"])){
-				if(!in_array(date("j"),$data["days"])){
-					return false;
-				}
-			}
-			
-			if(isset($data["months"])){
-				if(!in_array(date("n"),$data["months"])){
-					return false;
-				}
-			}
-			
-			if(isset($data["weeks"])){
-				if(!in_array(date("w"),$data["weeks"])){
-					return false;
-				}
-			}
-			
-			return true;
-		}
-	}
-	
-	
-    /**
-     * 发起http请求
-	 * @param string $url
-	 * @param array $data
-	 * @param array $option
-     * @return string
-     */
-	public static function httpsRequest($url,$data = null,$options = array()){
-		$curl = curl_init();
-		curl_setopt($curl, CURLOPT_URL, $url);
-		
-		curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, FALSE);
-		curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, FALSE);
-
-		
-		if (!empty($data)){
-			curl_setopt($curl, CURLOPT_POST, 1);
-			curl_setopt($curl, CURLOPT_POSTFIELDS, $data);
-		}
-		curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1);
-		if(isset($options['timeout']) && $options['timeout']>0) curl_setopt($curl, CURLOPT_TIMEOUT,$options['timeout']);
-		
-		if(isset($options["return_header"])){
-			curl_setopt($curl, CURLOPT_HEADER, $options["return_header"]);
-		}
-		
-		if(isset($options['header']) && is_array($options['header']) && $options['header']){
-			curl_setopt($curl, CURLOPT_HTTPHEADER,$options['header']);
-		}elseif(isset($options['cookie']) && !empty($options['cookie'])){
-			curl_setopt($curl, CURLOPT_COOKIE, $options['cookie']);
-		}
-		
-		//保存cookie文件路径
-		if(isset($options['saveCookieFile']) && $options['saveCookieFile']!=''){
-			curl_setopt($curl, CURLOPT_COOKIEJAR, $options['saveCookieFile']); 
-		}
-		
-		//读取cookie文件路径
-		if(isset($options['readCookieFile']) && $options['readCookieFile']!=''){
-			curl_setopt($curl, CURLOPT_COOKIEFILE, $options['readCookieFile']); 
-		}
-
-		curl_setopt ( $curl, CURLOPT_FOLLOWLOCATION, 1); 
-		$output = curl_exec($curl);
-		curl_close($curl);
-		return $output;
 	}
 }
 
