@@ -74,6 +74,10 @@ class Worker{
 	static $workerProcessPid = ROOT . '/conf/worker.pid'; //主进程pid
 	static $workerProcessDirectory = ROOT;
 	
+	static $globalData = array();
+	
+	const Worker_UPDATE_CONFIG_HANDLE = 'shmop'; //使用共享内存 
+	
 	const MAX_LOG_SIZE = 10*1024*1024; //字节
 	
 	static $taskProcessList = array();
@@ -129,8 +133,7 @@ class Worker{
 		Worker::write(self::MASTER_HANDLE,self::STATUS_RUNNING);
 		
 		//标识配置文件是否更新状态
-		//Worker::write(self::STATUS_HANDLE,0);
-		file_put_contents(Worker::Worker_CONFIG_UPDATE,0);
+		Worker::workerConfigUpdate(0);
 
 		//保存主进程pid
 		file_put_contents(self::$workerProcessPid,getmypid());
@@ -238,8 +241,7 @@ class Worker{
 					if($row["status"] == self::STATUS_RUNNING){
 						@proc_close($process);
 						$row["status"] = self::STATUS_STARTING; //非正常关闭进程服务，将状态改为启动中
-						//Worker::write(Worker::STATUS_HANDLE,1);
-						file_put_contents(Worker::Worker_CONFIG_UPDATE,1);
+						Worker::workerConfigUpdate(1);
 					}else{
 						@proc_close($process);
 						$row["status"] = self::STATUS_SHUTDOWN; //否则状态改为停止
@@ -308,6 +310,31 @@ class Worker{
 	public static function read($key){
 		$shmid = @shmop_open($key, 'c', 0644, 1);
 		return shmop_read($shmid,0,1);
+	}
+	
+    /**
+     * 配置文件更新状态读取
+     * @return int
+     */
+	public static function workerConfigRead(){
+		if(Worker::Worker_UPDATE_CONFIG_HANDLE == 'file'){
+			return (int)file_get_contents(Worker::Worker_CONFIG_UPDATE);
+		}else{
+			return (int)Worker::read(Worker::STATUS_HANDLE);
+		}
+	}
+	
+    /**
+     * 标识配置文件更新状态
+	 * @param int $value 0:未更新，1：已更新
+     * @return int
+     */
+	public static function workerConfigUpdate($value = 0){
+		if(Worker::Worker_UPDATE_CONFIG_HANDLE == 'file'){
+			file_put_contents(Worker::Worker_CONFIG_UPDATE,$value);
+		}else{
+			Worker::write(Worker::STATUS_HANDLE,$value);
+		}
 	}
 
     /**
@@ -941,8 +968,7 @@ class Console{
 						}
 					}
 					Worker::updateWorkerStatus($list);
-					//Worker::write(Worker::STATUS_HANDLE,1);
-					file_put_contents(Worker::Worker_CONFIG_UPDATE,1);
+					Worker::workerConfigUpdate(1);
 				}
 			}else{
 				$list = Worker::getWorkerStatus();
@@ -951,8 +977,7 @@ class Console{
 						$list[$taskid]["status"] = Worker::STATUS_STARTING;
 					}
 					Worker::updateWorkerStatus($list);
-					//Worker::write(Worker::STATUS_HANDLE,1);
-					file_put_contents(Worker::Worker_CONFIG_UPDATE,1);
+					Worker::workerConfigUpdate(1);
 				}
 			}
 		}
@@ -974,8 +999,7 @@ class Console{
 					@exec(sprintf("kill -9 %d -f",$row["pid"]));
 					$list[$taskid]["status"] = Worker::STATUS_STOPING;
 					Worker::updateWorkerStatus($list);
-					//Worker::write(Worker::STATUS_HANDLE,1);
-					file_put_contents(Worker::Worker_CONFIG_UPDATE,1);
+					Worker::workerConfigUpdate(1);
 				}
 			}
 		}else{
@@ -1059,11 +1083,10 @@ class Console{
      * @return void
      */
 	public static function listion(){
-		//$status = Worker::read(Worker::STATUS_HANDLE);
-		$status = file_get_contents(Worker::Worker_CONFIG_UPDATE);
+		$status = Worker::workerConfigRead();
 		if($status == 1){
 			Worker::$taskList = Worker::getWorkerStatus();
-			file_put_contents(Worker::Worker_CONFIG_UPDATE,0);
+			Worker::workerConfigUpdate(0);
 		}
 	}
 	
@@ -1277,8 +1300,7 @@ class Console{
 					}
 
 					Worker::updateWorkerStatus($data);
-					//Worker::write(Worker::STATUS_HANDLE,1);
-					file_put_contents(Worker::Worker_CONFIG_UPDATE,1);
+					Worker::workerConfigUpdate(1);
 			
 				}
 			break;
